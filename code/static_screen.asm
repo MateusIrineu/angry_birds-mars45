@@ -1,38 +1,63 @@
-# Display: 512x256 / Unit: 4x4 / Base: 0x10010000 / (128x64 unidades)
+# ==============================================================================
+# JOGO ANGRY BIRDS: SISTEMA DE DIA E NOITE + TELA INICIAL COM LOGO (SEGURO)
+# Display: 512x256 | Unit: 4x4 | Base: 0x10010000 | (128x64 unidades)
+# ==============================================================================
 
 .text
 main:
-    li $16, 0               # $16 = Deslocamento nuwem
-    li $17, 0               # $17 = tela do jogo
-    jal render_completo
+    li $16, 0               # $16 = Deslocamento X das nuvens (Carrossel)
+    li $17, 0               # $17 = Fase do Jogo (0 = Dia, 1 = Noite)
 
+    # ==========================================================================
+    # TELA INICIAL (ESTÁTICA)
+    # ==========================================================================
+tela_inicial:
+    # 1. Desenha o cenário inicial de DIA (estático)
+    jal desenha_ceu
+    jal desenha_astro       
+    jal desenha_cenario_fundo
+    jal desenha_nuvens
+    jal desenha_chao
+    jal desenha_textura_grama
+    jal desenha_textura_terra
+    jal desenha_titulo      # Desenha a Pixel Art do Logo
 
-    # jogo
-game_loop:
-    lui $8, 0xFFFF          # $8 0xFFFF0000
-    lw $9, 0($8)            # $9 verifica se tem tecla pressionada
+aguarda_inicio:
+    # 2. Fica em loop infinito esperando a tecla Espaço ser pressionada
+    lui $8, 0xFFFF          
+    lw $9, 0($8)            
     andi $9, $9, 1        
-    beq $9, $0, aguarda_tecla 
+    beq $9, $0, aguarda_inicio 
     
-    lw $10, 4($8)           #le tecla pressionada 
-    bne $10, 32, aguarda_tecla # ignora se a tecla n for espaco
+    lw $10, 4($8)           
+    bne $10, 32, aguarda_inicio 
     
-    xori $17, $17, 1        # torca a tela
-    jal render_completo     # desenha tela nova
-
-aguarda_tecla:
-    li $2, 32               # syscall sleep
-    li $4, 50               
+    # 3. Espaço pressionado! Pausa (debounce) para não trocar a fase na mesma hora
+    li $2, 32               
+    li $4, 250              
     syscall
 
-    j game_loop             
+    # ==========================================================================
+    # GAME LOOP PRINCIPAL (ANIMAÇÕES)
+    # ==========================================================================
+game_loop:
+    # 1. VERIFICA ENTRADA DO TECLADO
+    lui $8, 0xFFFF          
+    lw $9, 0($8)            
+    andi $9, $9, 1        
+    beq $9, $0, render_frame
+    
+    lw $10, 4($8)           
+    bne $10, 32, render_frame
+    
+    xori $17, $17, 1        # Inverte a fase com a tecla Espaço
 
-# RENDER
+render_frame:
+    # 2. ATUALIZA ANIMAÇÕES
+    addi $16, $16, 1        
+    andi $16, $16, 127      
 
-render_completo:
-    addi $29, $29, -4       
-    sw $31, 0($29)
-
+    # 3. CHAMA AS ROTINAS DE DESENHO
     jal desenha_ceu
     jal desenha_estrelas    
     jal desenha_astro       
@@ -42,12 +67,16 @@ render_completo:
     jal desenha_textura_grama
     jal desenha_textura_terra
 
-    lw $31, 0($29)          
-    addi $29, $29, 4
-    jr $31
+    # 4. CONTROLE DE VELOCIDADE (FPS)
+    li $2, 32               
+    li $4, 50               
+    syscall
 
+    j game_loop             
 
-# C�U
+# ==============================================================================
+# 1. CÉU
+# ==============================================================================
 desenha_ceu:
     beq $17, $0, paleta_ceu_dia
     li $9, 0x00061224       
@@ -83,9 +112,9 @@ laco_ceu3: beq $10, $0, fim_ceu
 fim_ceu:
     jr $31                  
 
-
-# ESTRELAS 
-
+# ==============================================================================
+# 2. ESTRELAS ESTÁTICAS
+# ==============================================================================
 desenha_estrelas:
     beq $17, $0, fim_estrelas 
     li $2, 40               
@@ -110,15 +139,16 @@ laco_estrelas:
     add $14, $14, $12       
     sll $14, $14, 2         
     lui $8, 0x1001
-    add $14, $14, $8       
+    add $14, $14, $8        
     sw $15, 0($14)
     addi $11, $11, -1
     j laco_estrelas
 fim_estrelas:
     jr $31
 
-# MODELOS SOL E LUA
-
+# ==============================================================================
+# 3. O ASTRO
+# ==============================================================================
 desenha_astro:
     beq $17, $0, paleta_sol
     li $9, 0x00F0F4F8       
@@ -142,26 +172,27 @@ laco_ast_x:
     sll $12, $12, 2         
     lui $13, 0x1001         
     add $12, $12, $13       
-    sw $9, 0($12)          
+    sw $9, 0($12)           
     addi $11, $11, 1        
     ble $11, $24, laco_ast_x 
     addi $10, $10, 1        
     ble $10, $25, laco_ast_y 
     jr $31
 
-
-# MONTANHA DOS FUNDO
+# ==============================================================================
+# 4. MONTANHAS NO FUNDO
+# ==============================================================================
 desenha_cenario_fundo:
     addi $29, $29, -4       
     sw $31, 0($29)
     li $4, 32               
     li $5, 18               
     jal motor_montanha
-    li $4, 95              
-    li $5, 24              
+    li $4, 95               
+    li $5, 24               
     jal motor_montanha
-    li $4, 64              
-    li $5, 12              
+    li $4, 64               
+    li $5, 12               
     beq $17, $0, cor_mont_dia
     li $25, 0x00101C1C      
     j pula_cor_mont
@@ -180,7 +211,7 @@ motor_montanha:
 padrao_mont_dia:
     li $25, 0x002F4F4F      
 motor_montanha_cor:
-    li $8, 47              
+    li $8, 47               
     sub $9, $8, $5       
     li $10, 0               
 m_laco_y:
@@ -204,7 +235,9 @@ m_prox_y:
 fim_montanha:
     jr $31
 
-# BASE SOLO
+# ==============================================================================
+# 5. CHÃO BASE
+# ==============================================================================
 desenha_chao:
     beq $17, $0, cor_chao_dia
     li $9, 0x002B5E28       
@@ -232,7 +265,9 @@ laco_terra: beq $10, $0, fim_chao
 fim_chao:
     jr $31
 
-# TEXTURA GRAMA 
+# ==============================================================================
+# 6. TEXTURA DA GRAMA
+# ==============================================================================
 desenha_textura_grama:
     addi $29, $29, -4       
     sw $31, 0($29)          
@@ -284,7 +319,9 @@ pinta_pixel_direto:
     sw $9, 0($12)
     jr $31
 
-# TEXTURA TERRA 
+# ==============================================================================
+# 7. TEXTURA DA TERRA 
+# ==============================================================================
 desenha_textura_terra:
     beq $17, $0, tex_te_dia
     li $9, 0x00241003       
@@ -301,15 +338,16 @@ laco_tex_x:
     sll $12, $12, 2         
     lui $13, 0x1001
     add $12, $12, $13       
-    sw $9, 0($12)          
+    sw $9, 0($12)           
     addi $11, $11, 13       
     ble $11, 127, laco_tex_x
     addi $10, $10, 2        
     ble $10, 62, laco_tex_y
     jr $31
 
-
-# NUVENS
+# ==============================================================================
+# 8. NUVENS E CARROSSEL
+# ==============================================================================
 desenha_nuvens:
     addi $29, $29, -4
     sw $31, 0($29)
@@ -442,3 +480,69 @@ laco_hline_w:
     j laco_hline_w
 fim_hline_w:
     jr $31
+
+# ==============================================================================
+# 9. TÍTULO NA TELA INICIAL (COM TRAVA DE SEGURANÇA)
+# ==============================================================================
+desenha_titulo:
+    addi $29, $29, -4
+    sw $31, 0($29)
+
+    la $8, dados_logo          # $8 = Endereço base da matriz de coordenadas
+    li $9, 0x00FFFFFF          # $9 = Cor do texto (Branco)
+
+laco_titulo:
+    lw $10, 0($8)              # Lê o X da tabela
+    
+    # --- SISTEMA DE SEGURANÇA CONTRA LIXO DE MEMÓRIA ---
+    bltz $10, fim_titulo       # Se X < 0 (achou o -1), o texto acabou.
+    bgt $10, 127, fim_titulo   # Se X for um número maluco (maior que a tela), ignora e salva o MARS!
+    # ---------------------------------------------------
+
+    lw $11, 4($8)              # Lê o Y da tabela
+
+    # Calcula o endereço real do pixel no display: Base + ((Y * 128) + X) * 4
+    sll $12, $11, 7            
+    add $12, $12, $10          
+    sll $12, $12, 2            
+    lui $13, 0x1001
+    add $12, $12, $13          
+    
+    sw $9, 0($12)              # Pinta a coordenada de branco
+    
+    addi $8, $8, 8             # Pula para a próxima dupla (X,Y)
+    j laco_titulo
+
+fim_titulo:
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+# ==============================================================================
+# SEÇÃO DE DADOS (COORDENADAS DO TEXTO)
+# ==============================================================================
+.data 0x10040000        # Salva os dados em um endereço seguro, fora do Bitmap Display
+.align 2
+dados_logo:
+    # A 
+    .word 45,20, 46,20, 44,21, 47,21, 44,22, 45,22, 46,22, 47,22, 44,23, 47,23, 44,24, 47,24
+    # N 
+    .word 49,20, 52,20, 49,21, 50,21, 52,21, 49,22, 51,22, 52,22, 49,23, 52,23, 49,24, 52,24
+    # G 
+    .word 55,20, 56,20, 57,20, 54,21, 54,22, 56,22, 57,22, 54,23, 57,23, 55,24, 56,24, 57,24
+    # R 
+    .word 59,20, 60,20, 61,20, 59,21, 62,21, 59,22, 60,22, 61,22, 59,23, 61,23, 59,24, 62,24
+    # Y 
+    .word 64,20, 67,20, 64,21, 67,21, 65,22, 66,22, 65,23, 65,24
+    # B 
+    .word 46,27, 47,27, 48,27, 46,28, 49,28, 46,29, 47,29, 48,29, 46,30, 49,30, 46,31, 47,31, 48,31
+    # I 
+    .word 51,27, 52,27, 53,27, 52,28, 52,29, 52,30, 51,31, 52,31, 53,31
+    # R 
+    .word 55,27, 56,27, 57,27, 55,28, 58,28, 55,29, 56,29, 57,29, 55,30, 57,30, 55,31, 58,31
+    # D 
+    .word 60,27, 61,27, 62,27, 60,28, 63,28, 60,29, 63,29, 60,30, 63,30, 60,31, 61,31, 62,31
+    # S 
+    .word 66,27, 67,27, 68,27, 65,28, 66,29, 67,29, 68,30, 65,31, 66,31, 67,31
+    # Condição de Parada
+    .word -1, -1
