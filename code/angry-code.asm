@@ -1,5 +1,5 @@
 # ==============================================================================
-# JOGO ANGRY BIRDS: SISTEMA DE DIA E NOITE + TELA INICIAL COM LOGO (SEGURO)
+# JOGO ANGRY BIRDS: SISTEMA DE DIA E NOITE + TELA INICIAL COM LOGO + NPCs
 # Display: 512x256 | Unit: 4x4 | Base: 0x10010000 | (128x64 unidades)
 # ==============================================================================
 
@@ -20,6 +20,12 @@ tela_inicial:
     jal desenha_chao
     jal desenha_textura_grama
     jal desenha_textura_terra
+    
+    # === NOVO: Desenha os NPCs na Tela Inicial ===
+    jal desenha_passaro
+    jal desenha_porco
+    # ============================================
+    
     jal desenha_titulo      # Desenha a Pixel Art do Logo
 
 aguarda_inicio:
@@ -66,6 +72,11 @@ render_frame:
     jal desenha_chao
     jal desenha_textura_grama
     jal desenha_textura_terra
+    
+    # === NOVO: Desenha os NPCs no Game Loop ===
+    jal desenha_passaro
+    jal desenha_porco
+    # ==========================================
 
     # 4. CONTROLE DE VELOCIDADE (FPS)
     li $2, 32               
@@ -358,7 +369,7 @@ desenha_nuvens:
     li $5, 12              
     jal nuvem_p
     li $4, 90              
-    li $5, 8              
+    li $5, 8               
     jal nuvem_g
     li $4, 115             
     li $5, 18              
@@ -482,35 +493,32 @@ fim_hline_w:
     jr $31
 
 # ==============================================================================
-# 9. TÍTULO NA TELA INICIAL (COM TRAVA DE SEGURANÇA)
+# 9. TÍTULO NA TELA INICIAL
 # ==============================================================================
 desenha_titulo:
     addi $29, $29, -4
     sw $31, 0($29)
 
-    la $8, dados_logo          # $8 = Endereço base da matriz de coordenadas
-    li $9, 0x00FFFFFF          # $9 = Cor do texto (Branco)
+    la $8, dados_logo          
+    li $9, 0x00FFFFFF          
 
 laco_titulo:
-    lw $10, 0($8)              # Lê o X da tabela
+    lw $10, 0($8)              
     
-    # --- SISTEMA DE SEGURANÇA CONTRA LIXO DE MEMÓRIA ---
-    bltz $10, fim_titulo       # Se X < 0 (achou o -1), o texto acabou.
-    bgt $10, 127, fim_titulo   # Se X for um número maluco (maior que a tela), ignora e salva o MARS!
-    # ---------------------------------------------------
+    bltz $10, fim_titulo       
+    bgt $10, 127, fim_titulo   
 
-    lw $11, 4($8)              # Lê o Y da tabela
+    lw $11, 4($8)              
 
-    # Calcula o endereço real do pixel no display: Base + ((Y * 128) + X) * 4
     sll $12, $11, 7            
     add $12, $12, $10          
     sll $12, $12, 2            
     lui $13, 0x1001
     add $12, $12, $13          
     
-    sw $9, 0($12)              # Pinta a coordenada de branco
+    sw $9, 0($12)              
     
-    addi $8, $8, 8             # Pula para a próxima dupla (X,Y)
+    addi $8, $8, 8             
     j laco_titulo
 
 fim_titulo:
@@ -518,10 +526,82 @@ fim_titulo:
     addi $29, $29, 4
     jr $31
 
+
+# ==============================================================================
+# 10. DESENHO DOS NPCS (PÁSSARO E PORCO)
+# ==============================================================================
+desenha_passaro:
+    addi $29, $29, -4
+    sw $31, 0($29)
+    
+    li $4, 12           # X inicial
+    li $5, 42           # Y inicial (encostado no chao, Y do chao = 48)
+    li $6, 17           # X final (largura = 6 pixels)
+    li $7, 47           # Y final (altura = 6 pixels)
+    li $9, 0x00E32636   # Cor: Vermelho (Alizarin Crimson)
+    jal desenha_npc_generico
+
+    # Opcional: Desenha um pixel branco para o olho
+    li $10, 44          # Y = 44
+    li $11, 15          # X = 15
+    li $9, 0x00FFFFFF   # Branco
+    jal pinta_pixel_direto
+
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+desenha_porco:
+    addi $29, $29, -4
+    sw $31, 0($29)
+    
+    li $4, 105          # X inicial (Canto direito)
+    li $5, 42           # Y inicial
+    li $6, 110          # X final
+    li $7, 47           # Y final
+    li $9, 0x0055A630   # Cor: Verde Porco
+    jal desenha_npc_generico
+    
+    # Opcional: Desenha os olhos do porco
+    li $10, 44
+    li $11, 106
+    li $9, 0x00000000   # Preto
+    jal pinta_pixel_direto
+    
+    li $10, 44
+    li $11, 109
+    li $9, 0x00000000   # Preto
+    jal pinta_pixel_direto
+
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+desenha_npc_generico:
+    # Retângulo sólido simples preenchido
+    # $4 = X init, $5 = Y init, $6 = X end, $7 = Y end, $9 = Cor
+    move $10, $5              # $10 = Y atual
+npc_laco_y:
+    move $11, $4              # $11 = X atual
+npc_laco_x:
+    sll $12, $10, 7           # $12 = Y * 128
+    add $12, $12, $11         # $12 = (Y * 128) + X
+    sll $12, $12, 2           # Multiplica por 4 (tamanho da word)
+    lui $13, 0x1001           # Base da memória de vídeo
+    add $12, $12, $13         # Soma o endereço base
+    sw $9, 0($12)             # Pinta o pixel
+    
+    addi $11, $11, 1          # Próximo X
+    ble $11, $6, npc_laco_x
+    
+    addi $10, $10, 1          # Próximo Y
+    ble $10, $7, npc_laco_y
+    jr $31
+
 # ==============================================================================
 # SEÇÃO DE DADOS (COORDENADAS DO TEXTO)
 # ==============================================================================
-.data 0x10040000        # Salva os dados em um endereço seguro, fora do Bitmap Display
+.data 0x10040000        
 .align 2
 dados_logo:
     # A 
