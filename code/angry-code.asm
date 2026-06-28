@@ -1,18 +1,17 @@
 # ==============================================================================
-# JOGO ANGRY BIRDS: SISTEMA DE DIA E NOITE + TELA INICIAL COM LOGO + NPCs
+# JOGO ANGRY BIRDS: SISTEMA COMPLETO (DOIS CLIQUES, FÍSICA, CARGA E VITÓRIA)
 # Display: 512x256 | Unit: 4x4 | Base: 0x10010000 | (128x64 unidades)
 # ==============================================================================
 
 .text
 main:
-    li $16, 0               # $16 = Deslocamento X das nuvens (Carrossel)
-    li $17, 0               # $17 = Fase do Jogo (0 = Dia, 1 = Noite)
+    li $16, 0               # Deslocamento X das nuvens
+    li $17, 0               # Fase do Jogo (0 = Dia, 1 = Noite)
 
     # ==========================================================================
-    # TELA INICIAL (ESTÁTICA)
+    # TELA INICIAL
     # ==========================================================================
 tela_inicial:
-    # 1. Desenha o cenário inicial de DIA (estático)
     jal desenha_ceu
     jal desenha_astro       
     jal desenha_cenario_fundo
@@ -20,31 +19,25 @@ tela_inicial:
     jal desenha_chao
     jal desenha_textura_grama
     jal desenha_textura_terra
-    
-    # === NOVO: Desenha os NPCs na Tela Inicial ===
     jal desenha_passaro
     jal desenha_porco
-    # ============================================
-    
-    jal desenha_titulo      # Desenha a Pixel Art do Logo
+    jal desenha_titulo      
 
 aguarda_inicio:
-    # 2. Fica em loop infinito esperando a tecla Espaço ser pressionada
     lui $8, 0xFFFF          
     lw $9, 0($8)            
     andi $9, $9, 1        
     beq $9, $0, aguarda_inicio 
-    
     lw $10, 4($8)           
-    bne $10, 32, aguarda_inicio 
+    bne $10, 32, aguarda_inicio # Aguarda BARRA DE ESPAÇO para começar
     
-    # 3. Espaço pressionado! Pausa (debounce) para não trocar a fase na mesma hora
+    # Pausa (debounce)
     li $2, 32               
     li $4, 250              
     syscall
 
     # ==========================================================================
-    # GAME LOOP PRINCIPAL (ANIMAÇÕES)
+    # GAME LOOP PRINCIPAL
     # ==========================================================================
 game_loop:
     # 1. VERIFICA ENTRADA DO TECLADO
@@ -54,16 +47,74 @@ game_loop:
     beq $9, $0, render_frame
     
     lw $10, 4($8)           
-    bne $10, 32, render_frame
+    beq $10, 32, inverte_fase
+    beq $10, 108, aperta_l
+    j render_frame
+
+inverte_fase:
+    xori $17, $17, 1        
+    j render_frame
+
+aperta_l:
+    lw $11, passaro_st
+    beq $11, 0, inicia_carga      # Se está no estilingue, começa a carregar
+    beq $11, 1, atira_passaro     # Se está carregando, atira!
+    beq $11, 3, reseta_jogo       # Se já venceu, 'l' reinicia o jogo
+    j render_frame
+
+inicia_carga:
+    li $11, 1
+    sw $11, passaro_st
+    sw $0, forca_atual
+    li $11, 1
+    sw $11, forca_dir
     
-    xori $17, $17, 1        # Inverte a fase com a tecla Espaço
+    # Debounce (200ms) para evitar cliques duplos acidentais
+    li $2, 32
+    li $4, 200
+    syscall
+    j render_frame
+
+atira_passaro:
+    li $11, 2
+    sw $11, passaro_st
+    
+    # Calcula a velocidade com base na força escolhida pelo jogador
+    lw $12, forca_atual
+    
+    # Vx = 2 + (força / 4)
+    srl $13, $12, 2
+    addi $13, $13, 2
+    sw $13, passaro_vx
+    
+    # Vy = -3 - (força / 3) (Valores negativos sobem na tela)
+    li $14, 3
+    div $12, $14
+    mflo $13
+    li $14, -3
+    sub $13, $14, $13
+    sw $13, passaro_vy
+    j render_frame
+
+reseta_jogo:
+    # Reinicia posições e força para jogar de novo
+    sw $0, passaro_st
+    sw $0, forca_atual
+    li $11, 12
+    sw $11, passaro_x
+    li $11, 42
+    sw $11, passaro_y
+    j render_frame
 
 render_frame:
-    # 2. ATUALIZA ANIMAÇÕES
+    # 2. ATUALIZA FÍSICA E LÓGICAS
+    jal atualiza_carga      # Faz a barra oscilar se estiver carregando
+    jal atualiza_fisica     # Move o pássaro e checa colisões
+    
     addi $16, $16, 1        
     andi $16, $16, 127      
 
-    # 3. CHAMA AS ROTINAS DE DESENHO
+    # 3. DESENHA O FRAME
     jal desenha_ceu
     jal desenha_estrelas    
     jal desenha_astro       
@@ -73,20 +124,190 @@ render_frame:
     jal desenha_textura_grama
     jal desenha_textura_terra
     
-    # === NOVO: Desenha os NPCs no Game Loop ===
+    jal desenha_barra       # Desenha a barra de força amarela
     jal desenha_passaro
     jal desenha_porco
-    # ==========================================
 
-    # 4. CONTROLE DE VELOCIDADE (FPS)
+    # 4. CONTROLE DE TEMPO (FPS)
     li $2, 32               
-    li $4, 50               
+    li $4, 40               
     syscall
 
     j game_loop             
 
 # ==============================================================================
-# 1. CÉU
+# ATUALIZA CARGA (EFEITO VAI-E-VEM DA BARRA)
+# ==============================================================================
+atualiza_carga:
+    lw $8, passaro_st
+    bne $8, 1, fim_carga          # Só roda se estado == 1 (Carregando)
+    
+    lw $9, forca_atual
+    lw $10, forca_dir
+    add $9, $9, $10               # Força = Força + Direção
+    
+    bge $9, 20, inverte_desce     # Máximo de força alcançado = 20
+    ble $9, 0, inverte_sobe       # Mínimo de força alcançado = 0
+    j salva_carga
+    
+inverte_desce:
+    li $10, -1
+    j salva_carga
+inverte_sobe:
+    li $10, 1
+salva_carga:
+    sw $9, forca_atual
+    sw $10, forca_dir
+fim_carga:
+    jr $31
+
+# ==============================================================================
+# ATUALIZA FÍSICA DO PÁSSARO & COLISÕES
+# ==============================================================================
+atualiza_fisica:
+    lw $8, passaro_st
+    bne $8, 2, fim_fisica         # Só aplica se estado == 2 (Voando)
+
+    lw $9, passaro_x
+    lw $10, passaro_y
+    lw $11, passaro_vx
+    lw $12, passaro_vy
+
+    add $9, $9, $11               # X = X + Vx
+    add $10, $10, $12             # Y = Y + Vy
+    addi $12, $12, 1              # Vy = Vy + Gravidade (1)
+
+    sw $9, passaro_x
+    sw $10, passaro_y
+    sw $12, passaro_vy
+
+    # COLISÃO AABB COM O PORCO
+    # Porco: X de 105 a 110, Y de 42 a 47
+    # Passaro: X a X+5, Y a Y+5
+    bgt $9, 110, checa_chao       
+    addi $13, $9, 5
+    blt $13, 105, checa_chao      
+    bgt $10, 47, checa_chao       
+    addi $13, $10, 5
+    blt $13, 42, checa_chao       
+    
+    # SE PASSOU PELOS TESTES, HOUVE COLISÃO! GANHOU!
+    li $13, 3
+    sw $13, passaro_st            # Estado = 3 (Vitória)
+    j fim_fisica
+
+checa_chao:
+    bge $10, 42, falhou_chao      # Bateu no chão
+    bge $9, 120, falhou_chao      # Saiu da tela pela direita
+    j fim_fisica
+
+falhou_chao:
+    # Se errou, volta pro estilingue e zera força
+    sw $0, passaro_st
+    sw $0, forca_atual
+    li $13, 12
+    sw $13, passaro_x
+    li $13, 42
+    sw $13, passaro_y
+fim_fisica:
+    jr $31
+
+# ==============================================================================
+# DESENHO DA BARRA DE FORÇA
+# ==============================================================================
+desenha_barra:
+    addi $29, $29, -4
+    sw $31, 0($29)
+    
+    lw $8, passaro_st
+    bne $8, 1, fim_desenho_barra  # Só desenha se estiver carregando
+    
+    lw $9, forca_atual
+    beq $9, $0, fim_desenho_barra # Se força for 0, não desenha nada
+    
+    lw $4, passaro_x
+    lw $5, passaro_y
+    addi $5, $5, -4               # Posiciona a barra 4 pixels acima do pássaro
+    add $6, $4, $9                # Largura estende de acordo com a força
+    move $7, $5                   
+    li $9, 0x00FFD700             # Cor: Amarelo Ouro
+    jal desenha_retangulo
+
+fim_desenho_barra:
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+# ==============================================================================
+# DESENHO DOS PERSONAGENS
+# ==============================================================================
+desenha_passaro:
+    addi $29, $29, -4
+    sw $31, 0($29)
+    
+    lw $4, passaro_x
+    lw $5, passaro_y
+    addi $6, $4, 5          
+    addi $7, $5, 5          
+    li $9, 0x00E32636       # Vermelho
+    jal desenha_retangulo
+
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+desenha_porco:
+    addi $29, $29, -4
+    sw $31, 0($29)
+    
+    lw $8, passaro_st
+    beq $8, 3, fim_desenha_porco  # Se estado = 3 (Vitória), o porco some!
+
+    li $4, 105          
+    li $5, 42           
+    li $6, 110          
+    li $7, 47           
+    li $9, 0x0055A630   # Verde Porco
+    jal desenha_retangulo
+    
+    # Olhos do porco
+    li $10, 44
+    li $11, 106
+    li $9, 0x00000000   
+    jal pinta_pixel_direto
+    
+    li $10, 44
+    li $11, 109
+    li $9, 0x00000000   
+    jal pinta_pixel_direto
+
+fim_desenha_porco:
+    lw $31, 0($29)
+    addi $29, $29, 4
+    jr $31
+
+# GERADOR DE RETÂNGULOS
+desenha_retangulo:
+    move $10, $5              
+laco_ret_y:
+    move $11, $4              
+laco_ret_x:
+    sll $12, $10, 7           
+    add $12, $12, $11         
+    sll $12, $12, 2           
+    lui $13, 0x1001           
+    add $12, $12, $13         
+    sw $9, 0($12)             
+    
+    addi $11, $11, 1          
+    ble $11, $6, laco_ret_x
+    
+    addi $10, $10, 1          
+    ble $10, $7, laco_ret_y
+    jr $31
+
+# ==============================================================================
+# MOTOR GRÁFICO E AMBIENTAL (CÉU, CENÁRIO, TEXTURAS)
 # ==============================================================================
 desenha_ceu:
     beq $17, $0, paleta_ceu_dia
@@ -123,9 +344,6 @@ laco_ceu3: beq $10, $0, fim_ceu
 fim_ceu:
     jr $31                  
 
-# ==============================================================================
-# 2. ESTRELAS ESTÁTICAS
-# ==============================================================================
 desenha_estrelas:
     beq $17, $0, fim_estrelas 
     li $2, 40               
@@ -157,9 +375,6 @@ laco_estrelas:
 fim_estrelas:
     jr $31
 
-# ==============================================================================
-# 3. O ASTRO
-# ==============================================================================
 desenha_astro:
     beq $17, $0, paleta_sol
     li $9, 0x00F0F4F8       
@@ -190,9 +405,6 @@ laco_ast_x:
     ble $10, $25, laco_ast_y 
     jr $31
 
-# ==============================================================================
-# 4. MONTANHAS NO FUNDO
-# ==============================================================================
 desenha_cenario_fundo:
     addi $29, $29, -4       
     sw $31, 0($29)
@@ -246,9 +458,6 @@ m_prox_y:
 fim_montanha:
     jr $31
 
-# ==============================================================================
-# 5. CHÃO BASE
-# ==============================================================================
 desenha_chao:
     beq $17, $0, cor_chao_dia
     li $9, 0x002B5E28       
@@ -276,9 +485,6 @@ laco_terra: beq $10, $0, fim_chao
 fim_chao:
     jr $31
 
-# ==============================================================================
-# 6. TEXTURA DA GRAMA
-# ==============================================================================
 desenha_textura_grama:
     addi $29, $29, -4       
     sw $31, 0($29)          
@@ -330,9 +536,6 @@ pinta_pixel_direto:
     sw $9, 0($12)
     jr $31
 
-# ==============================================================================
-# 7. TEXTURA DA TERRA 
-# ==============================================================================
 desenha_textura_terra:
     beq $17, $0, tex_te_dia
     li $9, 0x00241003       
@@ -356,9 +559,6 @@ laco_tex_x:
     ble $10, 62, laco_tex_y
     jr $31
 
-# ==============================================================================
-# 8. NUVENS E CARROSSEL
-# ==============================================================================
 desenha_nuvens:
     addi $29, $29, -4
     sw $31, 0($29)
@@ -492,9 +692,6 @@ laco_hline_w:
 fim_hline_w:
     jr $31
 
-# ==============================================================================
-# 9. TÍTULO NA TELA INICIAL
-# ==============================================================================
 desenha_titulo:
     addi $29, $29, -4
     sw $31, 0($29)
@@ -504,10 +701,8 @@ desenha_titulo:
 
 laco_titulo:
     lw $10, 0($8)              
-    
     bltz $10, fim_titulo       
     bgt $10, 127, fim_titulo   
-
     lw $11, 4($8)              
 
     sll $12, $11, 7            
@@ -515,7 +710,6 @@ laco_titulo:
     sll $12, $12, 2            
     lui $13, 0x1001
     add $12, $12, $13          
-    
     sw $9, 0($12)              
     
     addi $8, $8, 8             
@@ -526,84 +720,22 @@ fim_titulo:
     addi $29, $29, 4
     jr $31
 
-
 # ==============================================================================
-# 10. DESENHO DOS NPCS (PÁSSARO E PORCO)
-# ==============================================================================
-desenha_passaro:
-    addi $29, $29, -4
-    sw $31, 0($29)
-    
-    li $4, 12           # X inicial
-    li $5, 42           # Y inicial (encostado no chao, Y do chao = 48)
-    li $6, 17           # X final (largura = 6 pixels)
-    li $7, 47           # Y final (altura = 6 pixels)
-    li $9, 0x00E32636   # Cor: Vermelho (Alizarin Crimson)
-    jal desenha_npc_generico
-
-    # Opcional: Desenha um pixel branco para o olho
-    li $10, 44          # Y = 44
-    li $11, 15          # X = 15
-    li $9, 0x00FFFFFF   # Branco
-    jal pinta_pixel_direto
-
-    lw $31, 0($29)
-    addi $29, $29, 4
-    jr $31
-
-desenha_porco:
-    addi $29, $29, -4
-    sw $31, 0($29)
-    
-    li $4, 105          # X inicial (Canto direito)
-    li $5, 42           # Y inicial
-    li $6, 110          # X final
-    li $7, 47           # Y final
-    li $9, 0x0055A630   # Cor: Verde Porco
-    jal desenha_npc_generico
-    
-    # Opcional: Desenha os olhos do porco
-    li $10, 44
-    li $11, 106
-    li $9, 0x00000000   # Preto
-    jal pinta_pixel_direto
-    
-    li $10, 44
-    li $11, 109
-    li $9, 0x00000000   # Preto
-    jal pinta_pixel_direto
-
-    lw $31, 0($29)
-    addi $29, $29, 4
-    jr $31
-
-desenha_npc_generico:
-    # Retângulo sólido simples preenchido
-    # $4 = X init, $5 = Y init, $6 = X end, $7 = Y end, $9 = Cor
-    move $10, $5              # $10 = Y atual
-npc_laco_y:
-    move $11, $4              # $11 = X atual
-npc_laco_x:
-    sll $12, $10, 7           # $12 = Y * 128
-    add $12, $12, $11         # $12 = (Y * 128) + X
-    sll $12, $12, 2           # Multiplica por 4 (tamanho da word)
-    lui $13, 0x1001           # Base da memória de vídeo
-    add $12, $12, $13         # Soma o endereço base
-    sw $9, 0($12)             # Pinta o pixel
-    
-    addi $11, $11, 1          # Próximo X
-    ble $11, $6, npc_laco_x
-    
-    addi $10, $10, 1          # Próximo Y
-    ble $10, $7, npc_laco_y
-    jr $31
-
-# ==============================================================================
-# SEÇÃO DE DADOS (COORDENADAS DO TEXTO)
+# VARIÁVEIS DO SISTEMA E MAPA DE SPERITES (LOGO)
 # ==============================================================================
 .data 0x10040000        
 .align 2
+
+passaro_x:   .word 12     
+passaro_y:   .word 42     
+passaro_vx:  .word 0      
+passaro_vy:  .word 0      
+passaro_st:  .word 0      # 0=Estilingue, 1=Carga, 2=Voo, 3=Vitória
+forca_atual: .word 0      # Carga atual (0 a 20)
+forca_dir:   .word 1      # Direção da barra de força (1 sobe, -1 desce)
+
 dados_logo:
+    # Letras do Título "ANGRY BIRDS" mapeadas em pixel coordenados
     # A 
     .word 45,20, 46,20, 44,21, 47,21, 44,22, 45,22, 46,22, 47,22, 44,23, 47,23, 44,24, 47,24
     # N 
@@ -624,5 +756,5 @@ dados_logo:
     .word 60,27, 61,27, 62,27, 60,28, 63,28, 60,29, 63,29, 60,30, 63,30, 60,31, 61,31, 62,31
     # S 
     .word 66,27, 67,27, 68,27, 65,28, 66,29, 67,29, 68,30, 65,31, 66,31, 67,31
-    # Condição de Parada
+    # Sinalizador de fim do array
     .word -1, -1
