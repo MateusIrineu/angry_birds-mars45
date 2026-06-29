@@ -1,5 +1,5 @@
 # ==============================================================================
-# JOGO ANGRY BIRDS: SISTEMA COMPLETO (DOIS CLIQUES, FÍSICA, CARGA E VITÓRIA)
+# JOGO ANGRY BIRDS: SISTEMA COMPLETO (DOIS CLIQUES, HITBOX, TELA DE VITÓRIA)
 # Display: 512x256 | Unit: 4x4 | Base: 0x10010000 | (128x64 unidades)
 # ==============================================================================
 
@@ -40,7 +40,11 @@ aguarda_inicio:
     # GAME LOOP PRINCIPAL
     # ==========================================================================
 game_loop:
-    # 1. VERIFICA ENTRADA DO TECLADO
+    # SE O ESTADO FOR 3 (VITÓRIA), DESVIA PARA A TELA DE VITÓRIA FIXA
+    lw $11, passaro_st
+    beq $11, 3, tela_vitoria
+
+    # 1. VERIFICA ENTRADA DO TECLADO (DURANTE O JOGO)
     lui $8, 0xFFFF          
     lw $9, 0($8)            
     andi $9, $9, 1        
@@ -59,7 +63,6 @@ aperta_l:
     lw $11, passaro_st
     beq $11, 0, inicia_carga      # Se está no estilingue, começa a carregar
     beq $11, 1, atira_passaro     # Se está carregando, atira!
-    beq $11, 3, reseta_jogo       # Se já venceu, 'l' reinicia o jogo
     j render_frame
 
 inicia_carga:
@@ -96,6 +99,32 @@ atira_passaro:
     sw $13, passaro_vy
     j render_frame
 
+# ==========================================================================
+# LÓGICA DA TELA DE VITÓRIA (ESTÁTICA)
+# ==========================================================================
+tela_vitoria:
+    # 1. Desenha o cenário de fundo estático
+    jal desenha_ceu
+    jal desenha_estrelas    
+    jal desenha_astro       
+    jal desenha_cenario_fundo
+    jal desenha_nuvens
+    jal desenha_chao
+    jal desenha_textura_grama
+    jal desenha_textura_terra
+    jal desenha_passaro       # Pássaro fica parado onde colidiu
+    jal desenha_vitoria       # <--- Escreve "VOCE VENCEU" na tela!
+
+aguarda_reinicios:
+    # 2. Fica em loop aguardando a tecla 'l' para reiniciar
+    lui $8, 0xFFFF          
+    lw $9, 0($8)            
+    andi $9, $9, 1        
+    beq $9, $0, aguarda_reinicios
+    
+    lw $10, 4($8)           
+    bne $10, 108, aguarda_reinicios # Só aceita 'l' (108) para resetar
+
 reseta_jogo:
     # Reinicia posições e força para jogar de novo
     sw $0, passaro_st
@@ -104,17 +133,22 @@ reseta_jogo:
     sw $11, passaro_x
     li $11, 42
     sw $11, passaro_y
-    j render_frame
+    
+    # Debounce para voltar ao jogo limpamente
+    li $2, 32
+    li $4, 250
+    syscall
+    j game_loop
 
 render_frame:
-    # 2. ATUALIZA FÍSICA E LÓGICAS
+    # 2. ATUALIZA FÍSICA E LÓGICAS (APENAS SE NÃO TIVER VENCIDO)
     jal atualiza_carga      # Faz a barra oscilar se estiver carregando
-    jal atualiza_fisica     # Move o pássaro e checa colisões
+    jal atualiza_fisica     # Move o pássaro e checa a hitbox da colisão
     
     addi $16, $16, 1        
     andi $16, $16, 127      
 
-    # 3. DESENHA O FRAME
+    # 3. DESENHA O FRAME NORMAL DE JOGO
     jal desenha_ceu
     jal desenha_estrelas    
     jal desenha_astro       
@@ -162,7 +196,7 @@ fim_carga:
     jr $31
 
 # ==============================================================================
-# ATUALIZA FÍSICA DO PÁSSARO & COLISÕES
+# ATUALIZA FÍSICA DO PÁSSARO & HITBOX DE COLISÃO
 # ==============================================================================
 atualiza_fisica:
     lw $8, passaro_st
@@ -181,28 +215,29 @@ atualiza_fisica:
     sw $10, passaro_y
     sw $12, passaro_vy
 
-    # COLISÃO AABB COM O PORCO
-    # Porco: X de 105 a 110, Y de 42 a 47
-    # Passaro: X a X+5, Y a Y+5
-    bgt $9, 110, checa_chao       
+    # --------------------------------------------------------
+    # HITBOX GENEROSA (COLISÃO AABB) CONTRA O ALVO/PORCO
+    # Aumentamos a área para aceitar acertos "de raspão"
+    # --------------------------------------------------------
+    bgt $9, 115, checa_chao       # Limite Direito (expandido para 115)
     addi $13, $9, 5
-    blt $13, 105, checa_chao      
-    bgt $10, 47, checa_chao       
+    blt $13, 98, checa_chao       # Limite Esquerdo (recuado para 98)
+    bgt $10, 50, checa_chao       # Limite Inferior (expandido para 50)
     addi $13, $10, 5
-    blt $13, 42, checa_chao       
+    blt $13, 35, checa_chao       # Limite Superior (subido para 35)
     
-    # SE PASSOU PELOS TESTES, HOUVE COLISÃO! GANHOU!
+    # SE PASSOU POR TODOS OS TESTES, TOCOU A HITBOX! VITÓRIA!
     li $13, 3
-    sw $13, passaro_st            # Estado = 3 (Vitória)
+    sw $13, passaro_st            # Estado = 3 (Ativa a Tela de Vitória)
     j fim_fisica
 
 checa_chao:
-    bge $10, 42, falhou_chao      # Bateu no chão
+    bge $10, 44, falhou_chao      # Rebaixamos o chão para 44 (permite raspar na grama)
     bge $9, 120, falhou_chao      # Saiu da tela pela direita
     j fim_fisica
 
 falhou_chao:
-    # Se errou, volta pro estilingue e zera força
+    # Se errou e bateu no chão, volta pro estilingue limpo
     sw $0, passaro_st
     sw $0, forca_atual
     li $13, 12
@@ -260,9 +295,6 @@ desenha_porco:
     addi $29, $29, -4
     sw $31, 0($29)
     
-    lw $8, passaro_st
-    beq $8, 3, fim_desenha_porco  # Se estado = 3 (Vitória), o porco some!
-
     li $4, 105          
     li $5, 42           
     li $6, 110          
@@ -304,6 +336,36 @@ laco_ret_x:
     
     addi $10, $10, 1          
     ble $10, $7, laco_ret_y
+    jr $31
+
+# ==============================================================================
+# FUNÇÃO: DESENHA TEXTO "VOCE VENCEU"
+# ==============================================================================
+desenha_vitoria:
+    addi $29, $29, -4
+    sw $31, 0($29)
+
+    la $8, dados_vitoria       
+    li $9, 0x00FFFFFF          # Cor: Branco para o texto
+
+laco_vitoria_txt:
+    lw $10, 0($8)              
+    bltz $10, fim_vitoria_txt  
+    lw $11, 4($8)              
+
+    sll $12, $11, 7            
+    add $12, $12, $10          
+    sll $12, $12, 2            
+    lui $13, 0x1001
+    add $12, $12, $13          
+    sw $9, 0($12)              
+    
+    addi $8, $8, 8             
+    j laco_vitoria_txt
+
+fim_vitoria_txt:
+    lw $31, 0($29)
+    addi $29, $29, 4
     jr $31
 
 # ==============================================================================
@@ -370,7 +432,7 @@ laco_estrelas:
     lui $8, 0x1001
     add $14, $14, $8        
     sw $15, 0($14)
-    addi $11, $11, -1
+    addi $11, $0, -1
     j laco_estrelas
 fim_estrelas:
     jr $31
@@ -721,7 +783,7 @@ fim_titulo:
     jr $31
 
 # ==============================================================================
-# VARIÁVEIS DO SISTEMA E MAPA DE SPERITES (LOGO)
+# VARIÁVEIS DO SISTEMA E MAPA DE SPRITES (LOGO E VITÓRIA)
 # ==============================================================================
 .data 0x10040000        
 .align 2
@@ -756,5 +818,33 @@ dados_logo:
     .word 60,27, 61,27, 62,27, 60,28, 63,28, 60,29, 63,29, 60,30, 63,30, 60,31, 61,31, 62,31
     # S 
     .word 66,27, 67,27, 68,27, 65,28, 66,29, 67,29, 68,30, 65,31, 66,31, 67,31
-    # Sinalizador de fim do array
+    # Sinalizador de fim do array do logo
+    .word -1, -1
+
+dados_vitoria:
+    # Letras mapeadas para escrever "VOCE VENCEU!" de forma centralizada
+    # V
+    .word 30,22, 34,22, 30,23, 34,23, 31,24, 33,24, 31,25, 33,25, 32,26
+    # O
+    .word 37,22, 38,22, 39,22, 36,23, 40,23, 36,24, 40,24, 36,25, 40,25, 37,26, 38,26, 39,26
+    # C
+    .word 43,22, 44,22, 45,22, 42,23, 42,24, 42,25, 43,26, 44,26, 45,26
+    # E
+    .word 47,22, 48,22, 49,22, 47,23, 47,24, 48,24, 47,25, 47,26, 48,26, 49,26
+    # Espaço
+    # V
+    .word 54,22, 58,22, 54,23, 58,23, 55,24, 57,24, 55,25, 57,25, 56,26
+    # E
+    .word 60,22, 61,22, 62,22, 60,23, 60,24, 61,24, 60,25, 60,26, 61,26, 62,26
+    # N
+    .word 64,22, 67,22, 64,23, 65,23, 67,23, 64,24, 66,24, 67,24, 64,25, 67,25, 64,26, 67,26
+    # C
+    .word 70,22, 71,22, 72,22, 69,23, 69,24, 69,25, 70,26, 71,26, 72,26
+    # E
+    .word 74,22, 75,22, 76,22, 74,23, 74,24, 75,24, 74,25, 74,26, 75,26, 76,26
+    # U
+    .word 78,22, 81,22, 78,23, 81,23, 78,24, 81,24, 78,25, 81,25, 79,26, 80,26, 81,26
+    # !
+    .word 83,22, 83,23, 83,24, 83,26
+    # Sinalizador de fim do array da vitória
     .word -1, -1
