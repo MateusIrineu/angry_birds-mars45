@@ -13,7 +13,7 @@ main:
     # ==========================================================================
 tela_inicial:
     jal desenha_ceu
-    jal desenha_astro       
+    jal desenha_astro      
     jal desenha_cenario_fundo
     jal desenha_nuvens
     jal desenha_chao
@@ -27,12 +27,12 @@ aguarda_inicio:
     lui $8, 0xFFFF          
     lw $9, 0($8)            
     andi $9, $9, 1        
-    beq $9, $0, aguarda_inicio 
-    lw $10, 4($8)           
+    beq $9, $0, aguarda_inicio
+    lw $10, 4($8)          
     bne $10, 32, aguarda_inicio # Aguarda BARRA DE ESPAÇO para começar
-    
+   
     # Pausa (debounce)
-    li $2, 32               
+    li $2, 32              
     li $4, 250              
     syscall
 
@@ -49,8 +49,8 @@ game_loop:
     lw $9, 0($8)            
     andi $9, $9, 1        
     beq $9, $0, render_frame
-    
-    lw $10, 4($8)           
+   
+    lw $10, 4($8)          
     beq $10, 32, inverte_fase
     beq $10, 108, aperta_l
     j render_frame
@@ -71,7 +71,7 @@ inicia_carga:
     sw $0, forca_atual
     li $11, 1
     sw $11, forca_dir
-    
+   
     # Debounce (200ms) para evitar cliques duplos acidentais
     li $2, 32
     li $4, 200
@@ -81,15 +81,15 @@ inicia_carga:
 atira_passaro:
     li $11, 2
     sw $11, passaro_st
-    
+   
     # Calcula a velocidade com base na força escolhida pelo jogador
     lw $12, forca_atual
-    
+   
     # Vx = 2 + (força / 4)
     srl $13, $12, 2
     addi $13, $13, 2
     sw $13, passaro_vx
-    
+   
     # Vy = -3 - (força / 3) (Valores negativos sobem na tela)
     li $14, 3
     div $12, $14
@@ -106,7 +106,7 @@ tela_vitoria:
     # 1. Desenha o cenário de fundo estático
     jal desenha_ceu
     jal desenha_estrelas    
-    jal desenha_astro       
+    jal desenha_astro      
     jal desenha_cenario_fundo
     jal desenha_nuvens
     jal desenha_chao
@@ -121,8 +121,8 @@ aguarda_reinicios:
     lw $9, 0($8)            
     andi $9, $9, 1        
     beq $9, $0, aguarda_reinicios
-    
-    lw $10, 4($8)           
+   
+    lw $10, 4($8)          
     bne $10, 108, aguarda_reinicios # Só aceita 'l' (108) para resetar
 
 reseta_jogo:
@@ -133,7 +133,7 @@ reseta_jogo:
     sw $11, passaro_x
     li $11, 42
     sw $11, passaro_y
-    
+   
     # Debounce para voltar ao jogo limpamente
     li $2, 32
     li $4, 250
@@ -144,30 +144,30 @@ render_frame:
     # 2. ATUALIZA FÍSICA E LÓGICAS (APENAS SE NÃO TIVER VENCIDO)
     jal atualiza_carga      # Faz a barra oscilar se estiver carregando
     jal atualiza_fisica     # Move o pássaro e checa a hitbox da colisão
-    
+   
     addi $16, $16, 1        
     andi $16, $16, 127      
 
     # 3. DESENHA O FRAME NORMAL DE JOGO
     jal desenha_ceu
     jal desenha_estrelas    
-    jal desenha_astro       
+    jal desenha_astro      
     jal desenha_cenario_fundo
     jal desenha_nuvens
     jal desenha_chao
     jal desenha_textura_grama
     jal desenha_textura_terra
-    
+   
     jal desenha_barra       # Desenha a barra de força amarela
     jal desenha_passaro
     jal desenha_porco
 
     # 4. CONTROLE DE TEMPO (FPS)
-    li $2, 32               
-    li $4, 40               
+    li $2, 32              
+    li $4, 40              
     syscall
 
-    j game_loop             
+    j game_loop            
 
 # ==============================================================================
 # ATUALIZA CARGA (EFEITO VAI-E-VEM DA BARRA)
@@ -175,15 +175,15 @@ render_frame:
 atualiza_carga:
     lw $8, passaro_st
     bne $8, 1, fim_carga          # Só roda se estado == 1 (Carregando)
-    
+   
     lw $9, forca_atual
     lw $10, forca_dir
     add $9, $9, $10               # Força = Força + Direção
-    
+   
     bge $9, 20, inverte_desce     # Máximo de força alcançado = 20
     ble $9, 0, inverte_sobe       # Mínimo de força alcançado = 0
     j salva_carga
-    
+   
 inverte_desce:
     li $10, -1
     j salva_carga
@@ -225,7 +225,7 @@ atualiza_fisica:
     bgt $10, 50, checa_chao       # Limite Inferior (expandido para 50)
     addi $13, $10, 5
     blt $13, 35, checa_chao       # Limite Superior (subido para 35)
-    
+   
     # SE PASSOU POR TODOS OS TESTES, TOCOU A HITBOX! VITÓRIA!
     li $13, 3
     sw $13, passaro_st            # Estado = 3 (Ativa a Tela de Vitória)
@@ -253,18 +253,18 @@ fim_fisica:
 desenha_barra:
     addi $29, $29, -4
     sw $31, 0($29)
-    
+   
     lw $8, passaro_st
     bne $8, 1, fim_desenho_barra  # Só desenha se estiver carregando
-    
+   
     lw $9, forca_atual
     beq $9, $0, fim_desenho_barra # Se força for 0, não desenha nada
-    
+   
     lw $4, passaro_x
     lw $5, passaro_y
     addi $5, $5, -4               # Posiciona a barra 4 pixels acima do pássaro
     add $6, $4, $9                # Largura estende de acordo com a força
-    move $7, $5                   
+    move $7, $5                  
     li $9, 0x00FFD700             # Cor: Amarelo Ouro
     jal desenha_retangulo
 
@@ -279,7 +279,7 @@ fim_desenho_barra:
 desenha_passaro:
     addi $29, $29, -4
     sw $31, 0($29)
-    
+   
     lw $4, passaro_x
     lw $5, passaro_y
     addi $6, $4, 5          
@@ -294,23 +294,23 @@ desenha_passaro:
 desenha_porco:
     addi $29, $29, -4
     sw $31, 0($29)
-    
+   
     li $4, 105          
-    li $5, 42           
+    li $5, 42          
     li $6, 110          
-    li $7, 47           
+    li $7, 47          
     li $9, 0x0055A630   # Verde Porco
     jal desenha_retangulo
-    
+   
     # Olhos do porco
     li $10, 44
     li $11, 106
-    li $9, 0x00000000   
+    li $9, 0x00000000  
     jal pinta_pixel_direto
-    
+   
     li $10, 44
     li $11, 109
-    li $9, 0x00000000   
+    li $9, 0x00000000  
     jal pinta_pixel_direto
 
 fim_desenha_porco:
@@ -324,16 +324,16 @@ desenha_retangulo:
 laco_ret_y:
     move $11, $4              
 laco_ret_x:
-    sll $12, $10, 7           
-    add $12, $12, $11         
-    sll $12, $12, 2           
-    lui $13, 0x1001           
-    add $12, $12, $13         
-    sw $9, 0($12)             
-    
+    sll $12, $10, 7          
+    add $12, $12, $11        
+    sll $12, $12, 2          
+    lui $13, 0x1001          
+    add $12, $12, $13        
+    sw $9, 0($12)            
+   
     addi $11, $11, 1          
     ble $11, $6, laco_ret_x
-    
+   
     addi $10, $10, 1          
     ble $10, $7, laco_ret_y
     jr $31
@@ -345,7 +345,7 @@ desenha_vitoria:
     addi $29, $29, -4
     sw $31, 0($29)
 
-    la $8, dados_vitoria       
+    la $8, dados_vitoria      
     li $9, 0x00FFFFFF          # Cor: Branco para o texto
 
 laco_vitoria_txt:
@@ -359,8 +359,8 @@ laco_vitoria_txt:
     lui $13, 0x1001
     add $12, $12, $13          
     sw $9, 0($12)              
-    
-    addi $8, $8, 8             
+   
+    addi $8, $8, 8            
     j laco_vitoria_txt
 
 fim_vitoria_txt:
@@ -373,12 +373,12 @@ fim_vitoria_txt:
 # ==============================================================================
 desenha_ceu:
     beq $17, $0, paleta_ceu_dia
-    li $9, 0x00061224       
+    li $9, 0x00061224      
     li $11, 0x000B2040      
     li $12, 0x0013325E      
     j aplica_ceu
 paleta_ceu_dia:
-    li $9, 0x005DADE2       
+    li $9, 0x005DADE2      
     li $11, 0x0085C1E9      
     li $12, 0x00AED6F1      
 aplica_ceu:
@@ -389,14 +389,14 @@ laco_ceu1: beq $10, $0, pre_ceu2
     addi $8, $8, 4
     addi $10, $10, -1
     j laco_ceu1
-pre_ceu2: 
+pre_ceu2:
     li $10, 2048            
 laco_ceu2: beq $10, $0, pre_ceu3
     sw $11, 0($8)
     addi $8, $8, 4
     addi $10, $10, -1
     j laco_ceu2
-pre_ceu3: 
+pre_ceu3:
     li $10, 2048            
 laco_ceu3: beq $10, $0, fim_ceu
     sw $12, 0($8)
@@ -407,10 +407,10 @@ fim_ceu:
     jr $31                  
 
 desenha_estrelas:
-    beq $17, $0, fim_estrelas 
-    li $2, 40               
+    beq $17, $0, fim_estrelas
+    li $2, 40              
     li $4, 1                
-    li $5, 1998             
+    li $5, 1998            
     syscall
     li $11, 40              
     li $15, 0x00FFFFFF      
@@ -426,58 +426,58 @@ laco_estrelas:
     li $5, 32
     syscall
     move $13, $4            
-    sll $14, $13, 7         
-    add $14, $14, $12       
-    sll $14, $14, 2         
+    sll $14, $13, 7        
+    add $14, $14, $12      
+    sll $14, $14, 2        
     lui $8, 0x1001
     add $14, $14, $8        
     sw $15, 0($14)
-    addi $11, $0, -1
+    addi $11, $11, -1
     j laco_estrelas
 fim_estrelas:
     jr $31
 
 desenha_astro:
     beq $17, $0, paleta_sol
-    li $9, 0x00F0F4F8       
-    li $10, 4               
-    li $15, 100             
-    li $24, 109             
+    li $9, 0x00F0F4F8      
+    li $10, 4              
+    li $15, 100            
+    li $24, 109            
     li $25, 13              
     j aplica_astro
 paleta_sol:
-    li $9, 0x00FFD700       
-    li $10, 3               
-    li $15, 5               
+    li $9, 0x00FFD700      
+    li $10, 3              
+    li $15, 5              
     li $24, 14              
     li $25, 11              
 aplica_astro:
 laco_ast_y:
-    move $11, $15           
+    move $11, $15          
 laco_ast_x:
-    sll $12, $10, 7         
-    add $12, $12, $11       
-    sll $12, $12, 2         
-    lui $13, 0x1001         
-    add $12, $12, $13       
-    sw $9, 0($12)           
+    sll $12, $10, 7        
+    add $12, $12, $11      
+    sll $12, $12, 2        
+    lui $13, 0x1001        
+    add $12, $12, $13      
+    sw $9, 0($12)          
     addi $11, $11, 1        
-    ble $11, $24, laco_ast_x 
+    ble $11, $24, laco_ast_x
     addi $10, $10, 1        
-    ble $10, $25, laco_ast_y 
+    ble $10, $25, laco_ast_y
     jr $31
 
 desenha_cenario_fundo:
-    addi $29, $29, -4       
+    addi $29, $29, -4      
     sw $31, 0($29)
-    li $4, 32               
-    li $5, 18               
+    li $4, 32              
+    li $5, 18              
     jal motor_montanha
-    li $4, 95               
-    li $5, 24               
+    li $4, 95              
+    li $5, 24              
     jal motor_montanha
-    li $4, 64               
-    li $5, 12               
+    li $4, 64              
+    li $5, 12              
     beq $17, $0, cor_mont_dia
     li $25, 0x00101C1C      
     j pula_cor_mont
@@ -496,20 +496,20 @@ motor_montanha:
 padrao_mont_dia:
     li $25, 0x002F4F4F      
 motor_montanha_cor:
-    li $8, 47               
-    sub $9, $8, $5       
-    li $10, 0               
+    li $8, 47              
+    sub $9, $8, $5      
+    li $10, 0              
 m_laco_y:
     bgt $9, $8, fim_montanha
-    sub $11, $4, $10       
-    add $12, $4, $10       
+    sub $11, $4, $10      
+    add $12, $4, $10      
 m_laco_x:
     bgt $11, $12, m_prox_y
-    sll $13, $9, 7         
-    add $13, $13, $11       
-    sll $13, $13, 2         
-    lui $14, 0x1001         
-    add $13, $13, $14       
+    sll $13, $9, 7        
+    add $13, $13, $11      
+    sll $13, $13, 2        
+    lui $14, 0x1001        
+    add $13, $13, $14      
     sw $25, 0($13)          
     addi $11, $11, 1
     j m_laco_x
@@ -522,16 +522,16 @@ fim_montanha:
 
 desenha_chao:
     beq $17, $0, cor_chao_dia
-    li $9, 0x002B5E28       
+    li $9, 0x002B5E28      
     li $11, 0x004A1D07      
     j aplica_chao
 cor_chao_dia:
-    li $9, 0x004CAF50       
+    li $9, 0x004CAF50      
     li $11, 0x008B4513      
 aplica_chao:
     lui $8, 0x1001
     addi $8, $8, 24576    
-    li $10, 512             
+    li $10, 512            
 laco_grama: beq $10, $0, pre_terra
     sw $9, 0($8)
     addi $8, $8, 4
@@ -548,17 +548,17 @@ fim_chao:
     jr $31
 
 desenha_textura_grama:
-    addi $29, $29, -4       
+    addi $29, $29, -4      
     sw $31, 0($29)          
     beq $17, $0, tex_gr_dia
-    li $9, 0x00122B10       
+    li $9, 0x00122B10      
     j aplica_tex_gr
 tex_gr_dia:
-    li $9, 0x002E7D32       
+    li $9, 0x002E7D32      
 aplica_tex_gr:
-    li $11, 0               
+    li $11, 0              
 laco_grama_topo:
-    rem $15, $11, 4         
+    rem $15, $11, 4        
     bne $15, $0, grama_topo_pula1
     li $10, 46
     jal pinta_pixel_direto
@@ -575,47 +575,47 @@ grama_topo_pula2:
     li $10, 49
     li $11, 0
 laco_grama_miolo:
-    rem $15, $11, 5         
+    rem $15, $11, 5        
     bne $15, $0, grama_miolo_pula
     jal pinta_pixel_direto
     addi $10, $10, 1        
     jal pinta_pixel_direto
-    addi $10, $10, -1       
+    addi $10, $10, -1      
 grama_miolo_pula:
     addi $11, $11, 1
     blt $11, 128, laco_grama_miolo
-    
+   
     lw $31, 0($29)          
     addi $29, $29, 4        
     jr $31
 
 pinta_pixel_direto:
-    sll $12, $10, 7         
-    add $12, $12, $11       
-    sll $12, $12, 2         
+    sll $12, $10, 7        
+    add $12, $12, $11      
+    sll $12, $12, 2        
     lui $13, 0x1001
-    add $12, $12, $13       
+    add $12, $12, $13      
     sw $9, 0($12)
     jr $31
 
 desenha_textura_terra:
     beq $17, $0, tex_te_dia
-    li $9, 0x00241003       
+    li $9, 0x00241003      
     j aplica_tex_te
 tex_te_dia:
-    li $9, 0x005C2E0B       
+    li $9, 0x005C2E0B      
 aplica_tex_te:
     li $10, 54              
 laco_tex_y:
-    li $11, 2               
+    li $11, 2              
 laco_tex_x:
-    sll $12, $10, 7         
-    add $12, $12, $11       
-    sll $12, $12, 2         
+    sll $12, $10, 7        
+    add $12, $12, $11      
+    sll $12, $12, 2        
     lui $13, 0x1001
-    add $12, $12, $13       
-    sw $9, 0($12)           
-    addi $11, $11, 13       
+    add $12, $12, $13      
+    sw $9, 0($12)          
+    addi $11, $11, 13      
     ble $11, 127, laco_tex_x
     addi $10, $10, 2        
     ble $10, 62, laco_tex_y
@@ -625,15 +625,15 @@ desenha_nuvens:
     addi $29, $29, -4
     sw $31, 0($29)
     li $4, 10              
-    li $5, 5               
+    li $5, 5              
     jal nuvem_m
     li $4, 50              
     li $5, 12              
     jal nuvem_p
     li $4, 90              
-    li $5, 8               
+    li $5, 8              
     jal nuvem_g
-    li $4, 115             
+    li $4, 115            
     li $5, 18              
     jal nuvem_m
     lw $31, 0($29)
@@ -644,16 +644,16 @@ nuvem_p:
     addi $29, $29, -4
     sw $31, 0($29)
     move $24, $4            
-    move $10, $5           
-    li $25, 6               
+    move $10, $5          
+    li $25, 6              
     jal aplica_cor_nuvem_clara
     jal draw_hline_wrap
-    addi $24, $4, -2       
+    addi $24, $4, -2      
     addi $10, $5, 1        
     li $25, 10
     jal aplica_cor_nuvem_clara
     jal draw_hline_wrap
-    addi $24, $4, -2       
+    addi $24, $4, -2      
     addi $10, $5, 2        
     li $25, 10
     jal aplica_cor_nuvem_escura
@@ -740,16 +740,16 @@ nuv_esc_dia:
 draw_hline_wrap:
 laco_hline_w:
     beq $25, $0, fim_hline_w
-    add $12, $24, $16       
+    add $12, $24, $16      
     andi $12, $12, 127      
-    sll $13, $10, 7         
-    add $13, $13, $12       
-    sll $13, $13, 2         
+    sll $13, $10, 7        
+    add $13, $13, $12      
+    sll $13, $13, 2        
     lui $14, 0x1001
-    add $13, $13, $14       
+    add $13, $13, $14      
     sw $15, 0($13)          
     addi $24, $24, 1        
-    addi $25, $25, -1       
+    addi $25, $25, -1      
     j laco_hline_w
 fim_hline_w:
     jr $31
@@ -763,8 +763,8 @@ desenha_titulo:
 
 laco_titulo:
     lw $10, 0($8)              
-    bltz $10, fim_titulo       
-    bgt $10, 127, fim_titulo   
+    bltz $10, fim_titulo      
+    bgt $10, 127, fim_titulo  
     lw $11, 4($8)              
 
     sll $12, $11, 7            
@@ -773,8 +773,8 @@ laco_titulo:
     lui $13, 0x1001
     add $12, $12, $13          
     sw $9, 0($12)              
-    
-    addi $8, $8, 8             
+   
+    addi $8, $8, 8            
     j laco_titulo
 
 fim_titulo:
@@ -788,8 +788,8 @@ fim_titulo:
 .data 0x10040000        
 .align 2
 
-passaro_x:   .word 12     
-passaro_y:   .word 42     
+passaro_x:   .word 12    
+passaro_y:   .word 42    
 passaro_vx:  .word 0      
 passaro_vy:  .word 0      
 passaro_st:  .word 0      # 0=Estilingue, 1=Carga, 2=Voo, 3=Vitória
@@ -798,25 +798,25 @@ forca_dir:   .word 1      # Direção da barra de força (1 sobe, -1 desce)
 
 dados_logo:
     # Letras do Título "ANGRY BIRDS" mapeadas em pixel coordenados
-    # A 
+    # A
     .word 45,20, 46,20, 44,21, 47,21, 44,22, 45,22, 46,22, 47,22, 44,23, 47,23, 44,24, 47,24
-    # N 
+    # N
     .word 49,20, 52,20, 49,21, 50,21, 52,21, 49,22, 51,22, 52,22, 49,23, 52,23, 49,24, 52,24
-    # G 
+    # G
     .word 55,20, 56,20, 57,20, 54,21, 54,22, 56,22, 57,22, 54,23, 57,23, 55,24, 56,24, 57,24
-    # R 
+    # R
     .word 59,20, 60,20, 61,20, 59,21, 62,21, 59,22, 60,22, 61,22, 59,23, 61,23, 59,24, 62,24
-    # Y 
+    # Y
     .word 64,20, 67,20, 64,21, 67,21, 65,22, 66,22, 65,23, 65,24
-    # B 
+    # B
     .word 46,27, 47,27, 48,27, 46,28, 49,28, 46,29, 47,29, 48,29, 46,30, 49,30, 46,31, 47,31, 48,31
-    # I 
+    # I
     .word 51,27, 52,27, 53,27, 52,28, 52,29, 52,30, 51,31, 52,31, 53,31
-    # R 
+    # R
     .word 55,27, 56,27, 57,27, 55,28, 58,28, 55,29, 56,29, 57,29, 55,30, 57,30, 55,31, 58,31
-    # D 
+    # D
     .word 60,27, 61,27, 62,27, 60,28, 63,28, 60,29, 63,29, 60,30, 63,30, 60,31, 61,31, 62,31
-    # S 
+    # S
     .word 66,27, 67,27, 68,27, 65,28, 66,29, 67,29, 68,30, 65,31, 66,31, 67,31
     # Sinalizador de fim do array do logo
     .word -1, -1
